@@ -96,7 +96,7 @@ function M.create(commits, git_root, tabpage, width, opts)
   end
 
   if base_revision then
-    title_text = title_text:gsub("%)$", ", base=" .. base_revision .. ")")
+    title_text = title_text .. " [base: " .. base_revision .. "]"
   end
 
   -- Add title node
