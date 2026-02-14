@@ -491,18 +491,6 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
   local old_original_buf, old_modified_buf = lifecycle.get_buffers(tabpage)
   local original_win, modified_win = lifecycle.get_windows(tabpage)
 
-  -- Handle single-pane mode recovery (coming from untracked file view)
-  local was_single_pane = lifecycle.is_single_pane_mode(tabpage)
-  if was_single_pane and modified_win and vim.api.nvim_win_is_valid(modified_win) then
-    -- Recreate the original window by splitting from the modified window
-    vim.api.nvim_set_current_win(modified_win)
-    vim.cmd("leftabove vsplit")
-    original_win = vim.api.nvim_get_current_win()
-    -- Update session with new window reference
-    lifecycle.update_windows(tabpage, original_win, nil)
-    vim.cmd("wincmd =")
-  end
-
   if not old_original_buf or not old_modified_buf or not original_win or not modified_win then
     vim.notify("Invalid diff session state", vim.log.levels.ERROR)
     return false
@@ -531,11 +519,17 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
 
   -- IMPORTANT: Restore window widths BEFORE loading buffers
   -- Loading virtual files with :edit! in a 1-column window can fail
-  if vim.api.nvim_win_is_valid(original_win) and vim.w[original_win].codediff_placeholder then
-    vim.w[original_win].codediff_placeholder = nil
-    -- Clear the skip autocmd group
+  if
+    (vim.api.nvim_win_is_valid(original_win) and vim.w[original_win].codediff_placeholder)
+    or (vim.api.nvim_win_is_valid(modified_win) and vim.w[modified_win].codediff_placeholder)
+  then
+    if vim.api.nvim_win_is_valid(original_win) then
+      vim.w[original_win].codediff_placeholder = nil
+    end
+    if vim.api.nvim_win_is_valid(modified_win) then
+      vim.w[modified_win].codediff_placeholder = nil
+    end
     pcall(vim.api.nvim_del_augroup_by_name, "codediff_skip_placeholder_" .. tabpage)
-    -- Equalize diff window widths BEFORE loading buffers
     local total_width = vim.api.nvim_win_get_width(original_win) + vim.api.nvim_win_get_width(modified_win)
     local half_width = math.floor(total_width / 2)
     vim.api.nvim_win_set_width(original_win, half_width)
@@ -649,12 +643,18 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
           vim.api.nvim_set_current_win(saved_current_win)
         end
 
-        -- Restore window widths if coming from untracked file view (placeholder mode)
-        if vim.api.nvim_win_is_valid(original_win) and vim.w[original_win].codediff_placeholder then
-          vim.w[original_win].codediff_placeholder = nil
-          -- Clear the skip autocmd group
+        -- Restore window widths if coming from single-pane view (placeholder mode)
+        if
+          (vim.api.nvim_win_is_valid(original_win) and vim.w[original_win].codediff_placeholder)
+          or (vim.api.nvim_win_is_valid(modified_win) and vim.w[modified_win].codediff_placeholder)
+        then
+          if vim.api.nvim_win_is_valid(original_win) then
+            vim.w[original_win].codediff_placeholder = nil
+          end
+          if vim.api.nvim_win_is_valid(modified_win) then
+            vim.w[modified_win].codediff_placeholder = nil
+          end
           pcall(vim.api.nvim_del_augroup_by_name, "codediff_skip_placeholder_" .. tabpage)
-          -- Equalize diff window widths
           local total_width = vim.api.nvim_win_get_width(original_win) + vim.api.nvim_win_get_width(modified_win)
           local half_width = math.floor(total_width / 2)
           vim.api.nvim_win_set_width(original_win, half_width)

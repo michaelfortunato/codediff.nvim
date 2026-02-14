@@ -608,14 +608,25 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
   end
 
   -- Hunk-level staging (S, U, D) - stage/unstage/discard individual hunks via git apply
-  if keymaps.stage_hunk then
-    lifecycle.set_tab_keymap(tabpage, "n", keymaps.stage_hunk, stage_hunk, { desc = "Stage hunk under cursor" })
+  -- Only set on diff buffers, not explorer (S/U conflict with stage_all/unstage_all)
+  local hunk_opts = { noremap = true, silent = true, nowait = true }
+  local diff_bufs = {}
+  if original_bufnr and vim.api.nvim_buf_is_valid(original_bufnr) then
+    table.insert(diff_bufs, original_bufnr)
   end
-  if keymaps.unstage_hunk then
-    lifecycle.set_tab_keymap(tabpage, "n", keymaps.unstage_hunk, unstage_hunk, { desc = "Unstage hunk under cursor" })
+  if modified_bufnr and vim.api.nvim_buf_is_valid(modified_bufnr) then
+    table.insert(diff_bufs, modified_bufnr)
   end
-  if keymaps.discard_hunk then
-    lifecycle.set_tab_keymap(tabpage, "n", keymaps.discard_hunk, discard_hunk, { desc = "Discard hunk under cursor" })
+  for _, bufnr in ipairs(diff_bufs) do
+    if keymaps.stage_hunk then
+      vim.keymap.set("n", keymaps.stage_hunk, stage_hunk, vim.tbl_extend("force", hunk_opts, { buffer = bufnr, desc = "Stage hunk under cursor" }))
+    end
+    if keymaps.unstage_hunk then
+      vim.keymap.set("n", keymaps.unstage_hunk, unstage_hunk, vim.tbl_extend("force", hunk_opts, { buffer = bufnr, desc = "Unstage hunk under cursor" }))
+    end
+    if keymaps.discard_hunk then
+      vim.keymap.set("n", keymaps.discard_hunk, discard_hunk, vim.tbl_extend("force", hunk_opts, { buffer = bufnr, desc = "Discard hunk under cursor" }))
+    end
   end
 end
 

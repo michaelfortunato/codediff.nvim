@@ -78,9 +78,9 @@ M.defaults = {
       diff_put = "dp", -- Put change to other buffer (like vimdiff)
       open_in_prev_tab = "gf", -- Open current buffer in previous tab (or new tab before current)
       toggle_stage = "-", -- Stage/unstage current file (works in explorer and diff buffers)
-      stage_hunk = "S", -- Stage the hunk under cursor to git index
-      unstage_hunk = "U", -- Unstage the hunk under cursor from git index
-      discard_hunk = "D", -- Discard the hunk under cursor (working tree only)
+      stage_hunk = "<leader>hs", -- Stage the hunk under cursor to git index
+      unstage_hunk = "<leader>hu", -- Unstage the hunk under cursor from git index
+      discard_hunk = "<leader>hr", -- Discard the hunk under cursor (working tree only)
     },
     explorer = {
       select = "<CR>",
