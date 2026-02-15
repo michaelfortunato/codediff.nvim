@@ -13,6 +13,8 @@
 - **[git-integration.md](git-integration.md)** - Git integration details
 - **[rendering-quick-reference.md](rendering-quick-reference.md)** - Rendering reference
 
-## Development Logs
+## Development History
 
-See `dev-docs/` for development logs and progress tracking.
+In-depth development logs, architecture decisions, and the full story of building codediff.nvim:
+
+- **[development/](development/)** — Organized into narrative reading paths covering algorithm development, Lua features, build system, and architecture decisions

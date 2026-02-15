@@ -54,7 +54,7 @@ Read everything in order to understand the complete development journey:
 ## 📁 Directory Structure
 
 ```
-dev-docs/
+docs/development/
 ├── 01-origins/              # The beginning: MVP plan, early notes, first assessment
 ├── 02-c-diff-algorithm/     # C core algorithm: Myers, optimization, char-level, parity
 ├── 03-build-and-platform/   # Build system, cross-platform, installation

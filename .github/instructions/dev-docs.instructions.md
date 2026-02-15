@@ -1,5 +1,5 @@
 applyTo:
-  - dev-docs/**
+  - docs/development/**
 ---
 
 # Development Documentation Guidelines

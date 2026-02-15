@@ -601,8 +601,7 @@ codediff.nvim/
 ├── plugin/                # Plugin entry point
 │   └── codediff.lua       # Auto-loaded on startup
 ├── tests/                 # Test suite (plenary.nvim)
-├── docs/                  # Production docs
-├── dev-docs/              # Development docs
+├── docs/                  # Documentation and development history
 ├── Makefile               # Build automation
 └── README.md
 ```
