@@ -295,7 +295,7 @@ function M.create(commits, git_root, tabpage, width, opts)
         modified_revision = commit_hash,
         line_range = line_range,
       }
-      view.update(tabpage, session_config, true)
+      view.update(tabpage, session_config, config.options.diff.jump_to_first_change)
     end)
   end
 

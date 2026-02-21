@@ -165,7 +165,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
           original_revision = nil,
           modified_revision = nil,
         }
-        view.update(tabpage, session_config, true)
+        view.update(tabpage, session_config, config.options.diff.jump_to_first_change)
       end)
       return
     end
@@ -346,7 +346,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
           original_revision = base_revision,
           modified_revision = target_revision,
         }
-        view.update(tabpage, session_config, true)
+        view.update(tabpage, session_config, config.options.diff.jump_to_first_change)
       end)
       return
     end
@@ -373,7 +373,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
             original_revision = commit_hash,
             modified_revision = nil,
           }
-          view.update(tabpage, session_config, true)
+          view.update(tabpage, session_config, config.options.diff.jump_to_first_change)
         end)
       elseif group == "conflicts" then
         -- Merge conflict: Show incoming (:3) vs current (:2), both diffed against base (:1)
@@ -405,7 +405,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
             modified_revision = modified_rev,
             conflict = true,
           }
-          view.update(tabpage, session_config, true)
+          view.update(tabpage, session_config, config.options.diff.jump_to_first_change)
         end)
       elseif group == "staged" then
         -- Staged changes: Compare staged (:0) vs HEAD (both virtual)
@@ -421,7 +421,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
             original_revision = commit_hash,
             modified_revision = ":0",
           }
-          view.update(tabpage, session_config, true)
+          view.update(tabpage, session_config, config.options.diff.jump_to_first_change)
         end)
       else
         -- Unstaged changes: Compare working tree vs staged (if exists) or HEAD
@@ -449,7 +449,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
             original_revision = original_revision,
             modified_revision = nil,
           }
-          view.update(tabpage, session_config, true)
+          view.update(tabpage, session_config, config.options.diff.jump_to_first_change)
         end)
       end
     end)

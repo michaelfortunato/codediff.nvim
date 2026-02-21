@@ -196,7 +196,7 @@ function M.create(session_config, filetype, on_ready)
               modified_lines,
               original_win,
               modified_win,
-              true -- auto_scroll_to_first_hunk = true on create
+              config.options.diff.jump_to_first_change
             )
 
             if conflict_diffs then
@@ -255,7 +255,7 @@ function M.create(session_config, filetype, on_ready)
           modified_is_virtual,
           original_win,
           modified_win,
-          true -- auto_scroll_to_first_hunk = true on create
+          config.options.diff.jump_to_first_change
         )
 
         if lines_diff then
