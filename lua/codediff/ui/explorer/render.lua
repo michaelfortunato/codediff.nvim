@@ -508,7 +508,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
   end
 
   if initial_file then
-    vim.defer_fn(function()
+    vim.schedule(function()
       -- Scroll explorer to the selected file using tree:get_node(line) lookup
       if vim.api.nvim_win_is_valid(explorer.winid) and vim.api.nvim_buf_is_valid(explorer.bufnr) then
         local line_count = vim.api.nvim_buf_line_count(explorer.bufnr)
@@ -528,7 +528,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
         git_root = git_root,
         group = initial_file_group,
       })
-    end, 100)
+    end)
   end
 
   -- Setup auto-refresh

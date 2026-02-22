@@ -325,7 +325,7 @@ function M.create(commits, git_root, tabpage, width, opts)
 
   -- Auto-expand first commit and select first file
   if first_commit_node then
-    vim.defer_fn(function()
+    vim.schedule(function()
       if is_single_file_mode then
         -- Single file mode: directly select the file at first commit
         -- Use file_path from commit data if available (handles renames), fallback to opts.file_path
@@ -368,7 +368,7 @@ function M.create(commits, git_root, tabpage, width, opts)
           end
         end)
       end
-    end, 100)
+    end)
   end
 
   -- Setup auto-refresh (git watcher + BufEnter)

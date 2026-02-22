@@ -37,13 +37,13 @@ function M.setup(explorer)
           explorer.on_file_select(node.data)
           -- Optionally focus the modified (right) pane after file load
           if config.options.explorer.focus_on_select then
-            vim.defer_fn(function()
+            vim.schedule(function()
               local lifecycle = require("codediff.ui.lifecycle")
               local _, mod_win = lifecycle.get_windows(explorer.tabpage)
               if mod_win and vim.api.nvim_win_is_valid(mod_win) then
                 vim.api.nvim_set_current_win(mod_win)
               end
-            end, 200)
+            end)
           end
         end
       end
