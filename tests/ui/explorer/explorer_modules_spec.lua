@@ -1,15 +1,6 @@
 -- Module loading tests for explorer submodules
 -- Validates that require() wiring works correctly after _set_*_module removal
 
--- Ensure nui.nvim is on package.path (plenary subprocess may have different CWD)
-local nui_dir = vim.fn.stdpath("data") .. "/nui.nvim"
-if vim.fn.isdirectory(nui_dir) == 1 then
-  nui_dir = nui_dir:gsub("\\", "/")
-  if not package.path:find(nui_dir, 1, true) then
-    package.path = package.path .. ";" .. nui_dir .. "/lua/?.lua;" .. nui_dir .. "/lua/?/init.lua"
-  end
-end
-
 describe("Explorer submodules", function()
   describe("module loading", function()
     it("loads actions module", function()

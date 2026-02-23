@@ -123,12 +123,19 @@ describe("Installer Module", function()
   it("Correctly identifies version mismatches", function()
     local current_version = version.VERSION
     local installed_version = installer.get_installed_version()
-    
+
     -- Test the logic of needs_update
+    -- Note: needs_update() returns false when an unversioned library exists
+    -- (assumes manual build is always up to date), so only assert mismatch
+    -- when no unversioned library is present
     if installed_version and installed_version ~= current_version then
-      assert.is_true(installer.needs_update(), 
-        string.format("Should detect version mismatch: installed=%s, current=%s", 
-          installed_version, current_version))
+      local plugin_root = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":h:h:h")
+      local has_unversioned = vim.fn.filereadable(plugin_root .. "/libvscode_diff." .. (jit.os == "Windows" and "dll" or jit.os == "OSX" and "dylib" or "so")) == 1
+      if not has_unversioned then
+        assert.is_true(installer.needs_update(),
+          string.format("Should detect version mismatch: installed=%s, current=%s",
+            installed_version, current_version))
+      end
     end
   end)
 

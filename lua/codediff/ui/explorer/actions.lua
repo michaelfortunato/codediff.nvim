@@ -50,6 +50,8 @@ function M.navigate_next(explorer)
   if current_index >= #all_files and not config.options.diff.cycle_next_file then
     vim.api.nvim_echo({ { string.format("Last file (%d of %d)", #all_files, #all_files), "WarningMsg" } }, false, {})
     return
+  else
+    vim.api.nvim_echo({}, false, {})
   end
   local next_index = current_index % #all_files + 1
   local next_file = all_files[next_index]
@@ -101,6 +103,8 @@ function M.navigate_prev(explorer)
   if current_index <= 1 and not config.options.diff.cycle_next_file then
     vim.api.nvim_echo({ { string.format("First file (1 of %d)", #all_files), "WarningMsg" } }, false, {})
     return
+  else
+    vim.api.nvim_echo({}, false, {})
   end
   local prev_index = current_index - 2
   if prev_index < 0 then
@@ -136,7 +140,7 @@ function M.toggle_visibility(explorer)
     explorer.is_hidden = false
 
     -- Update winid after show() creates a new window
-    -- NUI creates a new window with a new winid when showing
+    -- show() creates a new window with a new winid
     explorer.winid = explorer.split.winid
 
     -- Equalize diff windows after showing explorer
@@ -155,6 +159,11 @@ function M.toggle_visibility(explorer)
       -- Equalize the diff windows (typically 2 windows)
       if #diff_wins >= 2 then
         vim.cmd("wincmd =")
+      end
+
+      -- Restore explorer width after equalize
+      if explorer.split.winid and vim.api.nvim_win_is_valid(explorer.split.winid) then
+        vim.api.nvim_win_set_width(explorer.split.winid, explorer.split._size)
       end
     end)
   else
@@ -185,6 +194,20 @@ function M.toggle_view_mode(explorer)
   refresh_module.refresh(explorer)
 
   vim.notify("Explorer view: " .. new_mode, vim.log.levels.INFO)
+end
+
+-- Toggle visibility of a group (staged/unstaged/conflicts)
+function M.toggle_group(explorer, group_name)
+  if not explorer or not explorer.visible_groups then
+    return
+  end
+
+  explorer.visible_groups[group_name] = not explorer.visible_groups[group_name]
+  refresh_module.refresh(explorer)
+
+  local state = explorer.visible_groups[group_name] and "shown" or "hidden"
+  local label = ({ staged = "Staged Changes", unstaged = "Changes", conflicts = "Merge Changes" })[group_name] or group_name
+  vim.notify(label .. ": " .. state, vim.log.levels.INFO)
 end
 
 -- Stage/unstage a file by path and group (lower-level function)
@@ -377,7 +400,7 @@ function M.restore_entry(explorer, tree)
 
   if char == "d" then
     if is_untracked then
-      -- Delete untracked file (directories with untracked files need -fd flag)
+      -- Delete untracked file/directory
       git.delete_untracked(explorer.git_root, entry_path, function(err)
         if err then
           vim.schedule(function()
@@ -385,8 +408,20 @@ function M.restore_entry(explorer, tree)
           end)
         end
       end)
+    elseif is_directory then
+      -- Directory may contain both tracked and untracked files
+      -- Run git restore for tracked changes, then git clean for untracked
+      git.restore_file(explorer.git_root, entry_path, function(restore_err)
+        git.delete_untracked(explorer.git_root, entry_path, function(clean_err)
+          if restore_err and clean_err then
+            vim.schedule(function()
+              vim.notify("Failed to restore: " .. restore_err, vim.log.levels.ERROR)
+            end)
+          end
+        end)
+      end)
     else
-      -- Restore tracked file/directory
+      -- Restore tracked file
       git.restore_file(explorer.git_root, entry_path, function(err)
         if err then
           vim.schedule(function()

@@ -2,8 +2,8 @@
 -- Handles file/directory nodes, icons, status symbols, and tree structure
 local M = {}
 
-local Tree = require("nui.tree")
-local NuiLine = require("nui.line")
+local Tree = require("codediff.ui.lib.tree")
+local Line = require("codediff.ui.lib.line")
 local config = require("codediff.config")
 
 -- Merge artifact patterns (created by git mergetool)
@@ -25,11 +25,11 @@ local MERGE_ARTIFACT_PATTERNS = {
 
 -- Status symbols and colors
 local STATUS_SYMBOLS = {
-  M = { symbol = "M", color = "DiagnosticWarn" },
-  A = { symbol = "A", color = "DiagnosticOk" },
-  D = { symbol = "D", color = "DiagnosticError" },
-  ["??"] = { symbol = "??", color = "DiagnosticInfo" },
-  ["!"] = { symbol = "!", color = "DiagnosticError" }, -- Merge conflict
+  M = { symbol = "M", color = "CodeDiffStatusModified" },
+  A = { symbol = "A", color = "CodeDiffStatusAdded" },
+  D = { symbol = "D", color = "CodeDiffStatusDeleted" },
+  ["??"] = { symbol = "??", color = "CodeDiffStatusUntracked" },
+  ["!"] = { symbol = "!", color = "CodeDiffStatusConflict" },
 }
 
 -- Indent marker characters (neo-tree style)
@@ -140,6 +140,32 @@ function M.create_tree_file_nodes(files, git_root, group)
     }
   end
 
+  -- Flatten single-child directory chains (e.g., src/ -> components/ -> ui/ becomes src/components/ui/)
+  local function flatten_tree(subtree)
+    for key, item in pairs(subtree) do
+      if item._is_dir then
+        flatten_tree(item._children)
+        -- Check if this dir has exactly one child and it's a directory
+        local children_keys = {}
+        for k in pairs(item._children) do
+          children_keys[#children_keys + 1] = k
+        end
+        if #children_keys == 1 and item._children[children_keys[1]]._is_dir then
+          local child_key = children_keys[1]
+          local child = item._children[child_key]
+          local merged_key = key .. "/" .. child_key
+          subtree[merged_key] = child
+          subtree[key] = nil
+        end
+      end
+    end
+  end
+
+  local explorer_config = config.options.explorer or {}
+  if explorer_config.flatten_dirs ~= false then
+    flatten_tree(dir_tree)
+  end
+
   -- Convert to Tree.Node recursively
   -- indent_state: array of booleans, true = ancestor at that level is last child
   local function build_nodes(subtree, parent_path, indent_state)
@@ -217,7 +243,7 @@ end
 
 -- Prepare node for rendering (format display)
 function M.prepare_node(node, max_width, selected_path, selected_group)
-  local line = NuiLine()
+  local line = Line()
   local data = node.data or {}
   local explorer_config = config.options.explorer or {}
   local use_indent_markers = explorer_config.indent_markers ~= false -- default true

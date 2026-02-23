@@ -7,6 +7,7 @@ M.SUBCOMMANDS = { "merge", "file", "dir", "history", "install" }
 local git = require("codediff.core.git")
 local lifecycle = require("codediff.ui.lifecycle")
 local config = require("codediff.config")
+local view = require("codediff.ui.view")
 
 --- Parse triple-dot syntax for merge-base comparisons.
 -- @param arg string: The argument to parse
@@ -59,46 +60,50 @@ local function handle_git_diff(revision, revision2)
         return
       end
 
-      if revision2 then
-        -- Compare two revisions
-        git.resolve_revision(revision2, git_root, function(err_resolve2, commit_hash2)
-          if err_resolve2 then
-            vim.schedule(function()
-              vim.notify(err_resolve2, vim.log.levels.ERROR)
-            end)
-            return
-          end
+      -- Resolve the file's path at the original revision (handles renames/copies)
+      git.resolve_path_at_revision(commit_hash, git_root, relative_path, function(_, original_path)
+        if revision2 then
+          -- Compare two revisions
+          git.resolve_revision(revision2, git_root, function(err_resolve2, commit_hash2)
+            if err_resolve2 then
+              vim.schedule(function()
+                vim.notify(err_resolve2, vim.log.levels.ERROR)
+              end)
+              return
+            end
 
+            -- Resolve path at modified revision too
+            git.resolve_path_at_revision(commit_hash2, git_root, relative_path, function(_, modified_path)
+              vim.schedule(function()
+                ---@type SessionConfig
+                local session_config = {
+                  mode = "standalone",
+                  git_root = git_root,
+                  original_path = original_path,
+                  modified_path = modified_path,
+                  original_revision = commit_hash,
+                  modified_revision = commit_hash2,
+                }
+                view.create(session_config, filetype)
+              end)
+            end)
+          end)
+        else
+          -- Compare revision vs working tree
           vim.schedule(function()
-            local view = require("codediff.ui.view")
             ---@type SessionConfig
             local session_config = {
               mode = "standalone",
               git_root = git_root,
-              original_path = relative_path,
+              original_path = original_path,
               modified_path = relative_path,
               original_revision = commit_hash,
-              modified_revision = commit_hash2,
+              modified_revision = "WORKING",
             }
             view.create(session_config, filetype)
           end)
-        end)
-      else
-        -- Compare revision vs working tree
-        vim.schedule(function()
-          local view = require("codediff.ui.view")
-          ---@type SessionConfig
-          local session_config = {
-            mode = "standalone",
-            git_root = git_root,
-            original_path = relative_path,
-            modified_path = relative_path,
-            original_revision = commit_hash,
-            modified_revision = "WORKING",
-          }
-          view.create(session_config, filetype)
-        end)
-      end
+        end
+      end)
     end)
   end)
 end
@@ -108,7 +113,6 @@ local function handle_file_diff(file_a, file_b)
   local filetype = vim.filetype.match({ filename = file_a }) or ""
 
   -- Create diff view (no pre-reading needed, :edit will load content)
-  local view = require("codediff.ui.view")
   ---@type SessionConfig
   local session_config = {
     mode = "standalone",
@@ -144,8 +148,6 @@ local function handle_dir_diff(dir1, dir2)
     vim.notify("No differences between directories", vim.log.levels.INFO)
     return
   end
-
-  local view = require("codediff.ui.view")
 
   ---@type SessionConfig
   local session_config = {
@@ -224,8 +226,6 @@ local function handle_history(range, file_path, flags, line_range)
       end
 
       vim.schedule(function()
-        local view = require("codediff.ui.view")
-
         ---@type SessionConfig
         local session_config = {
           mode = "history",
@@ -307,7 +307,6 @@ local function handle_explorer(revision, revision2)
         end
 
         -- Create explorer view with empty diff panes initially
-        local view = require("codediff.ui.view")
 
         ---@type SessionConfig
         local session_config = {
@@ -502,7 +501,6 @@ function M.vscode_merge(opts)
 
   -- Ensure all required modules are loaded before we start vim.wait
   -- This prevents issues with lazy-loading during the wait loop
-  local view = require("codediff.ui.view")
 
   -- For synchronous execution (required by git mergetool), we need to block
   -- until the view is ready. Use vim.wait which processes the event loop.

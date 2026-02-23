@@ -183,13 +183,6 @@ describe("Explorer Mode", function()
 
   -- Test 3: Explorer creates proper window layout
   it("Creates correct window layout", function()
-    -- Skip if nui.nvim is not available
-    local has_nui = pcall(require, "nui.tree")
-    if not has_nui then
-      pending("nui.nvim not available")
-      return
-    end
-    
     local initial_tabs = vim.fn.tabpagenr('$')
     
     -- Open explorer
@@ -223,13 +216,6 @@ describe("Explorer Mode", function()
 
   -- Test 4: Window widths are properly distributed
   it("Distributes window widths correctly", function()
-    -- Skip if nui.nvim is not available
-    local has_nui = pcall(require, "nui.tree")
-    if not has_nui then
-      pending("nui.nvim not available")
-      return
-    end
-    
     vim.o.columns = 160  -- Set known terminal width
     
     vim.cmd("edit " .. temp_dir .. "/file1.txt")
@@ -284,13 +270,6 @@ describe("Explorer Mode", function()
 
   -- Test 5: Explorer shows correct content structure
   it("Shows correct explorer content structure", function()
-    -- Skip if nui.nvim is not available
-    local has_nui = pcall(require, "nui.tree")
-    if not has_nui then
-      pending("nui.nvim not available")
-      return
-    end
-    
     vim.cmd("edit " .. temp_dir .. "/file1.txt")
     vim.cmd("CodeDiff")
     
@@ -338,13 +317,6 @@ describe("Explorer Mode", function()
 
   -- Test 6: First file is auto-selected and displayed
   it("Auto-selects and displays first file", function()
-    -- Skip if nui.nvim is not available
-    local has_nui = pcall(require, "nui.tree")
-    if not has_nui then
-      pending("nui.nvim not available")
-      return
-    end
-
     vim.cmd("edit " .. temp_dir .. "/file1.txt")
     vim.cmd("CodeDiff")
     
@@ -388,13 +360,6 @@ describe("Explorer Mode", function()
 
   -- Test 7: Lifecycle session is created correctly
   it("Creates lifecycle session with explorer mode", function()
-    -- Skip if nui.nvim is not available
-    local has_nui = pcall(require, "nui.tree")
-    if not has_nui then
-      pending("nui.nvim not available")
-      return
-    end
-    
     vim.cmd("edit " .. temp_dir .. "/file1.txt")
     vim.cmd("CodeDiff")
     

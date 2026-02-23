@@ -1,8 +1,8 @@
 -- UI rendering for file history panel (create split, tree, keymaps)
 local M = {}
 
-local Tree = require("nui.tree")
-local Split = require("nui.split")
+local Tree = require("codediff.ui.lib.tree")
+local Split = require("codediff.ui.lib.split")
 local config = require("codediff.config")
 local git = require("codediff.core.git")
 local nodes_module = require("codediff.ui.history.nodes")
@@ -133,6 +133,7 @@ function M.create(commits, git_root, tabpage, width, opts)
   })
 
   split:mount()
+  pcall(vim.api.nvim_buf_set_name, split.bufnr, "CodeDiff History [" .. tabpage .. "]")
 
   -- Track selected commit and file
   local selected_commit = nil
@@ -226,7 +227,7 @@ function M.create(commits, git_root, tabpage, width, opts)
         data.files_loaded = true
         data.file_count = #files
 
-        -- NUI Tree doesn't have a direct "add children" API, so we need to rebuild
+        -- Tree doesn't have a direct "add children" API, so we need to rebuild
         -- For now, we'll use set_nodes on the commit node
         for _, file_node in ipairs(file_nodes) do
           tree:add_node(file_node, commit_node:get_id())
@@ -295,7 +296,7 @@ function M.create(commits, git_root, tabpage, width, opts)
         modified_revision = commit_hash,
         line_range = line_range,
       }
-      view.update(tabpage, session_config, true)
+      view.update(tabpage, session_config, config.options.diff.jump_to_first_change)
     end)
   end
 
@@ -324,7 +325,7 @@ function M.create(commits, git_root, tabpage, width, opts)
 
   -- Auto-expand first commit and select first file
   if first_commit_node then
-    vim.defer_fn(function()
+    vim.schedule(function()
       if is_single_file_mode then
         -- Single file mode: directly select the file at first commit
         -- Use file_path from commit data if available (handles renames), fallback to opts.file_path
@@ -367,7 +368,7 @@ function M.create(commits, git_root, tabpage, width, opts)
           end
         end)
       end
-    end, 100)
+    end)
   end
 
   -- Setup auto-refresh (git watcher + BufEnter)
@@ -450,6 +451,8 @@ function M.navigate_next(history)
   if current_index >= #all_files and not config.options.diff.cycle_next_file then
     vim.api.nvim_echo({ { string.format("Last file (%d of %d)", #all_files, #all_files), "WarningMsg" } }, false, {})
     return
+  else
+    vim.api.nvim_echo({}, false, {})
   end
 
   local next_index = current_index % #all_files + 1
@@ -494,6 +497,8 @@ function M.navigate_prev(history)
   if current_index <= 1 and not config.options.diff.cycle_next_file then
     vim.api.nvim_echo({ { string.format("First file (1 of %d)", #all_files), "WarningMsg" } }, false, {})
     return
+  else
+    vim.api.nvim_echo({}, false, {})
   end
 
   local prev_index = current_index - 2
@@ -659,6 +664,10 @@ function M.toggle_visibility(history)
     history.winid = history.split.winid
     vim.schedule(function()
       vim.cmd("wincmd =")
+      -- Restore history panel size after equalize
+      if history.split.winid and vim.api.nvim_win_is_valid(history.split.winid) then
+        vim.api.nvim_win_set_height(history.split.winid, history.split._size)
+      end
     end)
   else
     history.split:hide()

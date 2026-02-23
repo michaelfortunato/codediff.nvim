@@ -12,6 +12,11 @@ local render = require("codediff.ui.view.render")
 local view_keymaps = require("codediff.ui.view.keymaps")
 local conflict_window = require("codediff.ui.view.conflict_window")
 
+-- Eagerly load explorer and history to avoid lazy require failures
+-- when CWD changes in vim.schedule callbacks
+local explorer_module = require("codediff.ui.explorer")
+local history_module = require("codediff.ui.history")
+
 -- Re-export helper functions for backward compatibility
 local is_virtual_revision = helpers.is_virtual_revision
 local prepare_buffer = helpers.prepare_buffer
@@ -70,6 +75,8 @@ function M.create(session_config, filetype, on_ready)
     local mod_scratch = vim.api.nvim_create_buf(false, true)
     vim.bo[orig_scratch].buftype = "nofile"
     vim.bo[mod_scratch].buftype = "nofile"
+    pcall(vim.api.nvim_buf_set_name, orig_scratch, "CodeDiff " .. tabpage .. ".1")
+    pcall(vim.api.nvim_buf_set_name, mod_scratch, "CodeDiff " .. tabpage .. ".2")
     vim.api.nvim_win_set_buf(original_win, orig_scratch)
     vim.api.nvim_win_set_buf(modified_win, mod_scratch)
 
@@ -196,7 +203,7 @@ function M.create(session_config, filetype, on_ready)
               modified_lines,
               original_win,
               modified_win,
-              true -- auto_scroll_to_first_hunk = true on create
+              config.options.diff.jump_to_first_change
             )
 
             if conflict_diffs then
@@ -255,7 +262,7 @@ function M.create(session_config, filetype, on_ready)
           modified_is_virtual,
           original_win,
           modified_win,
-          true -- auto_scroll_to_first_hunk = true on create
+          config.options.diff.jump_to_first_change
         )
 
         if lines_diff then
@@ -373,7 +380,7 @@ function M.create(session_config, filetype, on_ready)
     local position = explorer_config.position or "left"
 
     -- Create explorer (explorer manages its own lifecycle and callbacks)
-    local explorer = require("codediff.ui.explorer")
+    local explorer = explorer_module
     local status_result = session_config.explorer_data.status_result
 
     -- For dir mode (git_root == nil), pass original_path and modified_path as dir roots
@@ -425,7 +432,7 @@ function M.create(session_config, filetype, on_ready)
     local history_config = config.options.history or {}
     local position = history_config.position or "bottom"
 
-    local history = require("codediff.ui.history")
+    local history = history_module
     local commits = session_config.history_data.commits
 
     local history_obj = history.create(commits, session_config.git_root, tabpage, nil, {
@@ -464,6 +471,16 @@ function M.create(session_config, filetype, on_ready)
     -- Setup keymaps for history mode (needs to be after session is created with mode="history")
     setup_all_keymaps(tabpage, original_info.bufnr, modified_info.bufnr, false)
   end
+
+  -- Emit CodeDiffOpen User autocmd
+  vim.api.nvim_exec_autocmds("User", {
+    pattern = "CodeDiffOpen",
+    modeline = false,
+    data = {
+      tabpage = tabpage,
+      mode = session_config.mode,
+    },
+  })
 
   return {
     original_buf = original_info.bufnr,
