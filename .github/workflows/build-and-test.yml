@@ -144,7 +144,8 @@ jobs:
 
       - name: Run Neovim tests (Windows)
         if: startsWith(matrix.runs-on, 'windows')
-        run: nmake /f Makefile.win test-lua
+        shell: bash
+        run: ./tests/run_plenary_tests.sh
 
       - name: Upload build artifacts
         if: success()

@@ -287,6 +287,20 @@ function M.create(commits, git_root, tabpage, width, opts)
     end
 
     vim.schedule(function()
+      -- Handle added/deleted files: show single pane instead of empty diff
+      local file_status = file_data.status
+      if file_status == "A" or file_status == "D" then
+        local side_by_side = require("codediff.ui.view.side_by_side")
+        if file_status == "A" then
+          -- File added in this commit: only exists in commit_hash
+          side_by_side.show_added_virtual_file(tabpage, git_root, file_path, commit_hash)
+        else
+          -- File deleted in this commit: only exists in parent
+          side_by_side.show_deleted_virtual_file(tabpage, git_root, old_path or file_path, target_hash)
+        end
+        return
+      end
+
       ---@type SessionConfig
       local session_config = {
         mode = "history",
