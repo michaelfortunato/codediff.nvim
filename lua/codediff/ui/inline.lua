@@ -8,6 +8,110 @@ local highlights = require("codediff.ui.highlights")
 -- Dedicated namespace for inline diff (separate from side-by-side namespaces)
 M.ns_inline = vim.api.nvim_create_namespace("codediff-inline")
 
+-- Cache for merged highlight groups (syntax fg + diff bg)
+local merged_hl_cache = {}
+
+-- ============================================================================
+-- Syntax highlighting for virt_lines via treesitter
+-- ============================================================================
+
+-- Get or create a merged highlight group combining syntax fg with diff bg
+-- @param syntax_hl string: treesitter highlight group (e.g., "@keyword")
+-- @param diff_hl string: diff background group ("CodeDiffLineDelete" or "CodeDiffCharDelete")
+-- @return string: merged highlight group name
+local function get_merged_hl(syntax_hl, diff_hl)
+  local key = syntax_hl .. "+" .. diff_hl
+  if merged_hl_cache[key] then
+    return merged_hl_cache[key]
+  end
+
+  -- Resolve the actual highlight values
+  local syntax_def = vim.api.nvim_get_hl(0, { name = syntax_hl, link = false })
+  local diff_def = vim.api.nvim_get_hl(0, { name = diff_hl, link = false })
+
+  if not syntax_def.fg and not syntax_def.bold and not syntax_def.italic then
+    -- Syntax group has no useful styling, just use diff highlight
+    merged_hl_cache[key] = diff_hl
+    return diff_hl
+  end
+
+  -- Create merged group: syntax fg/style + diff bg
+  local merged_name = "CodeDiffInline_" .. syntax_hl:gsub("[%.@]", "_") .. "_" .. diff_hl
+  local merged_def = {
+    bg = diff_def.bg,
+    fg = syntax_def.fg,
+    bold = syntax_def.bold,
+    italic = syntax_def.italic,
+    underline = syntax_def.underline,
+    strikethrough = syntax_def.strikethrough,
+  }
+  vim.api.nvim_set_hl(0, merged_name, merged_def)
+  merged_hl_cache[key] = merged_name
+  return merged_name
+end
+
+-- Compute treesitter syntax highlights for a set of lines
+-- @param lines string[]: source lines
+-- @param filetype string: language for treesitter parser
+-- @return table: { [1-based-line] = { {start_col, end_col, hl_group}, ... } }
+function M.compute_syntax_highlights(lines, filetype)
+  if not filetype or filetype == "" or #lines == 0 then
+    return {}
+  end
+
+  local source = table.concat(lines, "\n")
+
+  -- Try to get a parser for this filetype
+  local ok, parser = pcall(vim.treesitter.get_string_parser, source, filetype)
+  if not ok or not parser then
+    return {}
+  end
+
+  local ok2, trees = pcall(parser.parse, parser)
+  if not ok2 or not trees or #trees == 0 then
+    return {}
+  end
+
+  local query_ok, query = pcall(vim.treesitter.query.get, filetype, "highlights")
+  if not query_ok or not query then
+    return {}
+  end
+
+  local result = {}
+
+  for id, node in query:iter_captures(trees[1]:root(), source) do
+    local r1, c1, r2, c2 = node:range()
+    local hl_group = "@" .. query.captures[id]
+
+    -- Handle single-line captures
+    if r1 == r2 then
+      local line_num = r1 + 1 -- 1-based
+      if not result[line_num] then result[line_num] = {} end
+      table.insert(result[line_num], { start_col = c1 + 1, end_col = c2, hl_group = hl_group })
+    else
+      -- Multi-line capture: split across lines
+      for row = r1, r2 do
+        local line_num = row + 1
+        local line_text = lines[line_num] or ""
+        if not result[line_num] then result[line_num] = {} end
+
+        local sc = (row == r1) and (c1 + 1) or 1
+        local ec = (row == r2) and c2 or #line_text
+        if ec >= sc then
+          table.insert(result[line_num], { start_col = sc, end_col = ec, hl_group = hl_group })
+        end
+      end
+    end
+  end
+
+  -- Sort each line's highlights by start_col
+  for _, line_hls in pairs(result) do
+    table.sort(line_hls, function(a, b) return a.start_col < b.start_col end)
+  end
+
+  return result
+end
+
 -- ============================================================================
 -- Helper: UTF-16 to byte column conversion (shared with ui/core.lua)
 -- ============================================================================
@@ -27,42 +131,69 @@ end
 -- Build virtual line chunks with character-level highlights
 -- ============================================================================
 
--- Build a single virt_line entry with char-level diff highlighting
+-- Build a single virt_line entry with char-level diff highlighting and syntax colors
 -- line_text: the original (deleted) line text
 -- char_ranges: sorted list of {start_col, end_col} (1-based, byte positions)
+-- syntax_hls: sorted list of {start_col, end_col, hl_group} for this line (optional)
 -- Returns: array of {text, hl_group} chunks suitable for virt_lines
-local function build_highlighted_virt_line(line_text, char_ranges)
-  if not char_ranges or #char_ranges == 0 then
-    -- No char-level highlights: entire line gets line-level delete highlight
+local function build_highlighted_virt_line(line_text, char_ranges, syntax_hls)
+  -- Build position-to-syntax-hl map for quick lookup
+  local syntax_at = {}
+  if syntax_hls then
+    for _, sh in ipairs(syntax_hls) do
+      for col = sh.start_col, sh.end_col do
+        syntax_at[col] = sh.hl_group
+      end
+    end
+  end
+
+  -- Determine diff highlight for each byte position
+  -- nil = CodeDiffLineDelete, true = CodeDiffCharDelete
+  local char_delete_at = {}
+  if char_ranges then
+    for _, range in ipairs(char_ranges) do
+      for col = range.start_col, range.end_col do
+        char_delete_at[col] = true
+      end
+    end
+  end
+
+  -- Build chunks by walking through the line, grouping consecutive positions
+  -- with the same effective highlight
+  if #line_text == 0 then
     return {
-      { line_text, "CodeDiffLineDelete" },
-      { string.rep(" ", 300), "CodeDiffLineDelete" }, -- pad for full-width hl_eol effect
+      { "", "CodeDiffLineDelete" },
+      { string.rep(" ", 300), "CodeDiffLineDelete" },
     }
   end
 
   local chunks = {}
-  local pos = 1 -- 1-based byte position
+  local chunk_start = 1
+  local prev_hl = nil
 
-  for _, range in ipairs(char_ranges) do
-    local start_col = range.start_col
-    local end_col = range.end_col
-
-    -- Text before this char range: line-level delete highlight
-    if start_col > pos then
-      table.insert(chunks, { line_text:sub(pos, start_col - 1), "CodeDiffLineDelete" })
+  local function get_hl_at(col)
+    local diff_hl = char_delete_at[col] and "CodeDiffCharDelete" or "CodeDiffLineDelete"
+    local syn_hl = syntax_at[col]
+    if syn_hl then
+      return get_merged_hl(syn_hl, diff_hl)
     end
-
-    -- The changed characters: char-level delete highlight
-    if end_col >= start_col then
-      table.insert(chunks, { line_text:sub(start_col, end_col), "CodeDiffCharDelete" })
-    end
-
-    pos = end_col + 1
+    return diff_hl
   end
 
-  -- Remaining text after last char range
-  if pos <= #line_text then
-    table.insert(chunks, { line_text:sub(pos), "CodeDiffLineDelete" })
+  prev_hl = get_hl_at(1)
+
+  for col = 2, #line_text + 1 do
+    local cur_hl = col <= #line_text and get_hl_at(col) or nil
+    if cur_hl ~= prev_hl then
+      table.insert(chunks, { line_text:sub(chunk_start, col - 1), prev_hl })
+      chunk_start = col
+      prev_hl = cur_hl
+    end
+  end
+
+  -- Last chunk
+  if chunk_start <= #line_text then
+    table.insert(chunks, { line_text:sub(chunk_start), prev_hl })
   end
 
   -- Pad for full-width background color (simulates hl_eol for virt_lines)
@@ -236,13 +367,20 @@ end
 -- @param diff_result table: The diff result from core/diff.compute_diff
 -- @param original_lines string[]: Lines from the original (reference) content
 -- @param modified_lines string[]: Lines from the modified buffer
-function M.render_inline_diff(bufnr, diff_result, original_lines, modified_lines)
+-- @param opts? table: { filetype?: string } for syntax highlighting on virt_lines
+function M.render_inline_diff(bufnr, diff_result, original_lines, modified_lines, opts)
   -- Clear previous inline decorations
   vim.api.nvim_buf_clear_namespace(bufnr, M.ns_inline, 0, -1)
+  -- Clear merged highlight cache on re-render (colorscheme may have changed)
+  merged_hl_cache = {}
 
   if not diff_result or not diff_result.changes then
     return
   end
+
+  -- Compute syntax highlights for original lines (for virt_line coloring)
+  local filetype = opts and opts.filetype or (vim.api.nvim_buf_is_valid(bufnr) and vim.bo[bufnr].filetype or nil)
+  local syntax_hls = M.compute_syntax_highlights(original_lines, filetype)
 
   local buf_line_count = vim.api.nvim_buf_line_count(bufnr)
   local highlight_priority = config.options.diff.highlight_priority
@@ -265,7 +403,8 @@ function M.render_inline_diff(bufnr, diff_result, original_lines, modified_lines
       for orig_line = orig_start, orig_end - 1 do
         local line_text = original_lines[orig_line] or ""
         local char_ranges = get_char_ranges_for_orig_line(mapping.inner_changes, orig_line, original_lines)
-        local chunks = build_highlighted_virt_line(line_text, char_ranges)
+        local line_syntax = syntax_hls[orig_line]
+        local chunks = build_highlighted_virt_line(line_text, char_ranges, line_syntax)
         table.insert(virt_lines, chunks)
       end
 
