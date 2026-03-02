@@ -279,4 +279,55 @@ describe("Move rendering (side-by-side)", function()
     vim.fn.delete(lp)
     vim.fn.delete(rp)
   end)
+
+  -- Test 6: All test pairs — moved lines get correct highlights and signs
+  it("renders correct highlights and signs for ALL test pairs", function()
+    local pairs_dir = "scripts/test_pairs"
+    local handle = vim.loop.fs_scandir(pairs_dir)
+    assert.is_truthy(handle, "test_pairs directory should exist")
+
+    local tested = 0
+    while true do
+      local name, ftype = vim.loop.fs_scandir_next(handle)
+      if not name then break end
+      if ftype == "directory" then
+        local orig_path = pairs_dir .. "/" .. name .. "/original.txt"
+        local mod_path = pairs_dir .. "/" .. name .. "/modified.txt"
+        if vim.fn.filereadable(orig_path) == 1 and vim.fn.filereadable(mod_path) == 1 then
+          require("codediff").setup({ diff = { compute_moves = true, layout = "side-by-side" } })
+          highlights.setup()
+
+          view.create({
+            mode = "standalone",
+            original_path = orig_path,
+            modified_path = mod_path,
+          })
+          vim.cmd("redraw")
+          vim.wait(500)
+
+          local tabpage = vim.api.nvim_get_current_tabpage()
+          local session = lifecycle.get_session(tabpage)
+          if session and session.stored_diff_result.moves and #session.stored_diff_result.moves > 0 then
+            local orig_buf, mod_buf = lifecycle.get_buffers(tabpage)
+
+            -- Every moved line should have CodeDiffLineMove (use 0-indexed for extmark lookup)
+            for _, move in ipairs(session.stored_diff_result.moves) do
+              local hl_orig = lines_with_hl(orig_buf, "CodeDiffLineMove")
+              local hl_mod = lines_with_hl(mod_buf, "CodeDiffLineMove")
+              for line = move.original.start_line, move.original.end_line - 1 do
+                assert.is_truthy(hl_orig[line - 1], name .. ": orig L" .. line .. " should have CodeDiffLineMove")
+              end
+              for line = move.modified.start_line, move.modified.end_line - 1 do
+                assert.is_truthy(hl_mod[line - 1], name .. ": mod L" .. line .. " should have CodeDiffLineMove")
+              end
+            end
+          end
+
+          while vim.fn.tabpagenr("$") > 1 do vim.cmd("tabclose!") end
+          tested = tested + 1
+        end
+      end
+    end
+    assert.is_true(tested >= 10, "Should test at least 10 pairs, tested " .. tested)
+  end)
 end)

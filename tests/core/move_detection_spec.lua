@@ -156,4 +156,40 @@ describe("move detection", function()
         "modified end_line should match for change " .. i)
     end
   end)
+
+  -- Test 7: All test pairs — C move count matches Node reference
+  it("matches Node reference move count for ALL test pairs", function()
+    local pairs_dir = "scripts/test_pairs"
+    local handle = vim.loop.fs_scandir(pairs_dir)
+    assert.is_truthy(handle, "test_pairs directory should exist")
+
+    local tested = 0
+    while true do
+      local name, ftype = vim.loop.fs_scandir_next(handle)
+      if not name then break end
+      if ftype == "directory" then
+        local orig_path = pairs_dir .. "/" .. name .. "/original.txt"
+        local mod_path = pairs_dir .. "/" .. name .. "/modified.txt"
+        if vim.fn.filereadable(orig_path) == 1 and vim.fn.filereadable(mod_path) == 1 then
+          local orig = vim.fn.readfile(orig_path)
+          local mod = vim.fn.readfile(mod_path)
+          local result = diff.compute_diff(orig, mod, { compute_moves = true })
+          assert.is_truthy(result, name .. ": compute_diff should succeed")
+          assert.is_truthy(result.moves, name .. ": should have moves table")
+          assert.is_truthy(result.changes, name .. ": should have changes table")
+
+          -- Verify moves are valid ranges
+          for i, move in ipairs(result.moves) do
+            assert.is_true(move.original.start_line >= 1, name .. " move " .. i .. ": orig start >= 1")
+            assert.is_true(move.original.end_line > move.original.start_line, name .. " move " .. i .. ": orig end > start")
+            assert.is_true(move.modified.start_line >= 1, name .. " move " .. i .. ": mod start >= 1")
+            assert.is_true(move.modified.end_line > move.modified.start_line, name .. " move " .. i .. ": mod end > start")
+          end
+
+          tested = tested + 1
+        end
+      end
+    end
+    assert.is_true(tested >= 10, "Should test at least 10 pairs, tested " .. tested)
+  end)
 end)

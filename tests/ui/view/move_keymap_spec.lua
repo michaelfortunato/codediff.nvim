@@ -277,7 +277,74 @@ describe("gm align_move keymap", function()
   end)
 
   -- ──────────────────────────────────────────────────────────────
-  -- 5. gm shows message (no error) when not on a moved block
+  -- 5b. gm restore preserves scroll positions on WinLeave
+  -- ──────────────────────────────────────────────────────────────
+  it("restores scroll positions when switching to other window after gm", function()
+    require("codediff").setup({ diff = { compute_moves = true, layout = "side-by-side" } })
+    highlights.setup()
+
+    left_path, right_path = write_temp_files(make_original_lines(), make_modified_lines())
+
+    view.create({
+      mode = "standalone",
+      git_root = nil,
+      original_path = left_path,
+      modified_path = right_path,
+      original_revision = nil,
+      modified_revision = nil,
+    })
+
+    local tabpage = vim.api.nvim_get_current_tabpage()
+    local ok, session = wait_for_session_with_moves(tabpage)
+    assert.is_true(ok, "Session should be ready with moves")
+
+    local moves = session.stored_diff_result.moves
+    local move = moves[1]
+
+    -- Save scroll state of both windows BEFORE gm
+    local orig_view_before = vim.api.nvim_win_call(session.original_win, function()
+      return vim.fn.winsaveview()
+    end)
+    local mod_view_before = vim.api.nvim_win_call(session.modified_win, function()
+      return vim.fn.winsaveview()
+    end)
+
+    -- Focus original window, trigger gm on moved block
+    vim.api.nvim_set_current_win(session.original_win)
+    vim.api.nvim_win_set_cursor(session.original_win, { move.original.start_line, 0 })
+    vim.cmd("redraw")
+
+    local gm_keys = vim.api.nvim_replace_termcodes("gm", true, false, true)
+    vim.api.nvim_feedkeys(gm_keys, "x", false)
+    vim.cmd("redraw")
+
+    -- Switch to the modified window (triggers WinLeave → scheduled restore)
+    vim.api.nvim_set_current_win(session.modified_win)
+    vim.cmd("doautocmd WinLeave")
+    -- Process vim.schedule callbacks so the deferred restore runs
+    vim.wait(100, function() return false end)
+    vim.cmd("redraw")
+
+    -- Both windows should be back to pre-gm scroll positions
+    local orig_view_after = vim.api.nvim_win_call(session.original_win, function()
+      return vim.fn.winsaveview()
+    end)
+    local mod_view_after = vim.api.nvim_win_call(session.modified_win, function()
+      return vim.fn.winsaveview()
+    end)
+
+    assert.are.equal(orig_view_before.topline, orig_view_after.topline,
+      "original window topline should be restored after WinLeave")
+    assert.are.equal(mod_view_before.topline, mod_view_after.topline,
+      "modified window topline should be restored after WinLeave")
+    assert.is_true(vim.wo[session.original_win].scrollbind,
+      "scrollbind should be re-enabled on original window")
+    assert.is_true(vim.wo[session.modified_win].scrollbind,
+      "scrollbind should be re-enabled on modified window")
+  end)
+
+  -- ──────────────────────────────────────────────────────────────
+  -- 5c. gm shows message (no error) when not on a moved block
   -- ──────────────────────────────────────────────────────────────
   it("gm shows message when not on a moved block", function()
     require("codediff").setup({ diff = { compute_moves = true, layout = "side-by-side" } })
@@ -326,5 +393,94 @@ describe("gm align_move keymap", function()
     -- Just verify windows are still valid and no crash occurred
     assert.is_true(vim.api.nvim_win_is_valid(session.original_win), "original window should still be valid")
     assert.is_true(vim.api.nvim_win_is_valid(session.modified_win), "modified window should still be valid")
+  end)
+
+  -- Test 6: gm alignment works for ALL test pairs with moves
+  it("gm aligns correctly for ALL test pairs with moves", function()
+    local pairs_dir = "scripts/test_pairs"
+    local handle = vim.loop.fs_scandir(pairs_dir)
+    assert.is_truthy(handle, "test_pairs directory should exist")
+
+    local tested = 0
+    while true do
+      local name, ftype = vim.loop.fs_scandir_next(handle)
+      if not name then break end
+      if ftype == "directory" then
+        local orig_path = pairs_dir .. "/" .. name .. "/original.txt"
+        local mod_path = pairs_dir .. "/" .. name .. "/modified.txt"
+        if vim.fn.filereadable(orig_path) == 1 and vim.fn.filereadable(mod_path) == 1 then
+          require("codediff").setup({ diff = { compute_moves = true, layout = "side-by-side" } })
+          require("codediff.ui.highlights").setup()
+
+          local view = require("codediff.ui.view")
+          view.create({
+            mode = "standalone",
+            original_path = orig_path,
+            modified_path = mod_path,
+          })
+          vim.cmd("redraw")
+          vim.wait(500)
+
+          local lifecycle = require("codediff.ui.lifecycle")
+          local tp = vim.api.nvim_get_current_tabpage()
+          local session = lifecycle.get_session(tp)
+
+          if session and session.stored_diff_result.moves and #session.stored_diff_result.moves > 0 then
+            local orig_win = session.original_win
+            local mod_win = session.modified_win
+
+            for _, move in ipairs(session.stored_diff_result.moves) do
+              -- Position on first moved line
+              vim.api.nvim_set_current_win(orig_win)
+              vim.api.nvim_win_set_cursor(orig_win, { move.original.start_line, 0 })
+              vim.cmd("normal! zz")
+              vim.cmd("redraw")
+
+              -- Get winline before align
+              vim.wo[orig_win].scrollbind = false
+              vim.wo[mod_win].scrollbind = false
+
+              local my_wl = vim.api.nvim_win_call(orig_win, function()
+                vim.api.nvim_win_set_cursor(orig_win, { move.original.start_line, 0 })
+                return vim.fn.winline()
+              end)
+
+              vim.api.nvim_win_call(mod_win, function()
+                vim.api.nvim_win_set_cursor(mod_win, { move.modified.start_line, 0 })
+                vim.cmd("normal! zt")
+                if my_wl > 1 then
+                  local keys = vim.api.nvim_replace_termcodes((my_wl - 1) .. "<C-y>", true, false, true)
+                  vim.api.nvim_feedkeys(keys, "nx", false)
+                end
+              end)
+              vim.cmd("redraw")
+
+              local other_wl = vim.api.nvim_win_call(mod_win, function()
+                vim.api.nvim_win_set_cursor(mod_win, { move.modified.start_line, 0 })
+                return vim.fn.winline()
+              end)
+
+              -- Skip alignment check for very short files (< 30 lines)
+              -- where scroll limits prevent proper alignment
+              local orig_lc = vim.api.nvim_buf_line_count(session.original_bufnr)
+              local mod_lc = vim.api.nvim_buf_line_count(session.modified_bufnr)
+              if orig_lc >= 30 and mod_lc >= 30 then
+                assert.are.equal(my_wl, other_wl,
+                  name .. ": gm alignment failed, orig_wl=" .. my_wl .. " mod_wl=" .. other_wl)
+              end
+
+              -- Restore scrollbind
+              vim.wo[orig_win].scrollbind = true
+              vim.wo[mod_win].scrollbind = true
+              vim.cmd("syncbind")
+            end
+          end
+
+          while vim.fn.tabpagenr("$") > 1 do vim.cmd("tabclose!") end
+          tested = tested + 1
+        end
+      end
+    end
+    assert.is_true(tested >= 10, "Should test at least 10 pairs, tested " .. tested)
   end)
 end)

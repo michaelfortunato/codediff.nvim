@@ -5,6 +5,7 @@ local lifecycle = require("codediff.ui.lifecycle")
 local auto_refresh = require("codediff.ui.auto_refresh")
 local config = require("codediff.config")
 local navigation = require("codediff.ui.view.navigation")
+local render = require("codediff.ui.view.render")
 
 -- Centralized keymap setup for all diff view keymaps
 -- This function sets up ALL keymaps in one place for better maintainability
@@ -799,11 +800,14 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
     local my_first = my_range.start_line
     local other_first = other_range.start_line
 
-    -- Get actual visual row of cursor (accounts for filler virt_lines)
+    -- Get actual visual row of the moved block start (accounts for filler virt_lines)
+    -- Save and restore cursor so the user's position is not disturbed.
     local my_visual_row = vim.api.nvim_win_call(current_win, function()
-      -- Move cursor to first line of moved block to get its visual position
+      local saved_pos = vim.api.nvim_win_get_cursor(current_win)
       vim.api.nvim_win_set_cursor(current_win, { my_first, 0 })
-      return vim.fn.winline()
+      local row = vim.fn.winline()
+      vim.api.nvim_win_set_cursor(current_win, saved_pos)
+      return row
     end)
 
     -- Set other pane: position other_first at the same visual row
@@ -827,17 +831,25 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
       if restored then return end
       restored = true
       pcall(vim.api.nvim_del_augroup_by_id, augroup)
-      if vim.api.nvim_win_is_valid(other_win) then
-        vim.api.nvim_win_call(other_win, function() vim.fn.winrestview(other_view) end)
-        vim.wo[other_win].scrollbind = saved_scrollbind_other
+      if not vim.api.nvim_win_is_valid(current_win) or not vim.api.nvim_win_is_valid(other_win) then
+        return
       end
-      if vim.api.nvim_win_is_valid(current_win) then
-        vim.api.nvim_win_call(current_win, function() vim.fn.winrestview(current_view) end)
-        vim.wo[current_win].scrollbind = saved_scrollbind_current
+      -- Restore views first (before scrollbind)
+      vim.api.nvim_win_call(other_win, function() vim.fn.winrestview(other_view) end)
+      vim.api.nvim_win_call(current_win, function() vim.fn.winrestview(current_view) end)
+      -- Use the same anchor technique as initial render to establish scrollbind
+      local sess = lifecycle.get_session(tabpage)
+      local orig_win = sess and sess.original_win or current_win
+      local mod_win = sess and sess.modified_win or other_win
+      local orig_buf_nr = sess and sess.original_bufnr or vim.api.nvim_win_get_buf(orig_win)
+      local mod_buf_nr = sess and sess.modified_bufnr or vim.api.nvim_win_get_buf(mod_win)
+      local diff_result = sess and sess.stored_diff_result
+      local orig_cur = { current_view.lnum, current_view.col }
+      local mod_cur = { other_view.lnum, other_view.col }
+      if not is_on_original then
+        orig_cur, mod_cur = mod_cur, orig_cur
       end
-      if saved_scrollbind_current and saved_scrollbind_other then
-        vim.cmd("syncbind")
-      end
+      render.establish_scrollbind(orig_win, mod_win, orig_buf_nr, mod_buf_nr, diff_result, orig_cur, mod_cur)
     end
 
     -- Restore when cursor moves out of the moved block
@@ -853,10 +865,12 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
     })
 
     -- Restore when user switches to another window (WinLeave)
+    -- Use vim.schedule to defer restore until after Neovim finishes
+    -- the window switch and cursor placement from the click event.
     vim.api.nvim_create_autocmd("WinLeave", {
       group = augroup,
       callback = function()
-        restore()
+        vim.schedule(restore)
       end,
     })
   end

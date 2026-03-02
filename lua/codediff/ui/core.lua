@@ -33,8 +33,11 @@ local function insert_filler_lines(bufnr, after_line_0idx, count)
     return
   end
 
+  local above = false
   if after_line_0idx < 0 then
+    -- Deletion at start of file: place fillers ABOVE line 1
     after_line_0idx = 0
+    above = true
   end
 
   local virt_lines_content = {}
@@ -46,7 +49,7 @@ local function insert_filler_lines(bufnr, after_line_0idx, count)
 
   vim.api.nvim_buf_set_extmark(bufnr, ns_filler, after_line_0idx, 0, {
     virt_lines = virt_lines_content,
-    virt_lines_above = false,
+    virt_lines_above = above,
   })
 end
 
@@ -451,7 +454,47 @@ function M.render_diff(left_bufnr, right_bufnr, original_lines, modified_lines, 
         end
       end
 
-      -- "⇄ moved" virt_line with line range above original moved block + filler on modified side
+      -- Helper: find the aligned line on the other side
+      -- Given a line on one side, walks through changes to find what line on the
+      -- other side is visually at the same row (accounting for insertions/deletions)
+      local function find_aligned_mod_line(orig_line, changes)
+        -- Walk through changes to build cumulative offset
+        local offset = 0 -- mod_line = orig_line + offset (between changes)
+        for _, c in ipairs(changes) do
+          if orig_line < c.original.start_line then
+            -- Before this change: use current offset
+            return orig_line + offset
+          end
+          if orig_line >= c.original.start_line and orig_line < c.original.end_line then
+            -- Inside a change on original side: aligned with change's mod start
+            return c.modified.start_line
+          end
+          -- After this change: update offset
+          local orig_consumed = c.original.end_line - c.original.start_line
+          local mod_consumed = c.modified.end_line - c.modified.start_line
+          offset = offset + (mod_consumed - orig_consumed)
+        end
+        -- After all changes
+        return orig_line + offset
+      end
+
+      local function find_aligned_orig_line(mod_line, changes)
+        local offset = 0 -- orig_line = mod_line + offset
+        for _, c in ipairs(changes) do
+          if mod_line < c.modified.start_line then
+            return mod_line + offset
+          end
+          if mod_line >= c.modified.start_line and mod_line < c.modified.end_line then
+            return c.original.start_line
+          end
+          local orig_consumed = c.original.end_line - c.original.start_line
+          local mod_consumed = c.modified.end_line - c.modified.start_line
+          offset = offset + (orig_consumed - mod_consumed)
+        end
+        return mod_line + offset
+      end
+
+      -- "⇄ moved" virt_line above original moved block + filler on modified side
       if orig_first <= orig_line_count then
         local anchor = math.max(orig_first - 1, 0)
         local label = "⇄ moved: L" .. orig_first .. "-" .. orig_last .. " → L" .. mod_first .. "-" .. mod_last
@@ -460,25 +503,38 @@ function M.render_diff(left_bufnr, right_bufnr, original_lines, modified_lines, 
           virt_lines_above = true,
           priority = 250,
         })
-        -- Find the aligned line on the modified side: the change containing this
-        -- original range tells us where the corresponding modified position is
+        -- Always add filler on the other side to compensate for the annotation virt_line
         local change = find_change_for_orig(orig_first)
         local filler_anchor
+        local filler_above = true
         if change then
-          -- The modified side of this change is where the deletion appears
-          filler_anchor = math.max(change.modified.start_line - 1, 0)
+          local mod_lines_in_change = change.modified.end_line - change.modified.start_line
+          local orig_offset = orig_first - change.original.start_line
+          if orig_offset < mod_lines_in_change then
+            -- This orig line has a corresponding mod line
+            filler_anchor = change.modified.start_line + orig_offset - 1
+          elseif mod_lines_in_change > 0 then
+            -- Orig line is in the deletion zone — place in filler area after last mod line
+            filler_anchor = change.modified.end_line - 2
+            filler_above = false
+          else
+            -- Empty modified range — filler goes in the diff filler area
+            filler_anchor = math.max(change.modified.start_line - 2, 0)
+            filler_above = (filler_anchor == 0)
+          end
         else
-          filler_anchor = math.max(orig_first - 1, 0)
+          local aligned = find_aligned_mod_line(orig_first, lines_diff.changes)
+          filler_anchor = math.max(aligned - 1, 0)
         end
         filler_anchor = math.min(filler_anchor, mod_line_count - 1)
         pcall(vim.api.nvim_buf_set_extmark, right_bufnr, ns_filler, filler_anchor, 0, {
           virt_lines = { { { string.rep("╱", 500), "CodeDiffFiller" } } },
-          virt_lines_above = true,
+          virt_lines_above = filler_above,
           priority = 250,
         })
       end
 
-      -- "⇄ moved" virt_line with line range above modified moved block + filler on original side
+      -- "⇄ moved" virt_line above modified moved block + filler on original side
       if mod_first <= mod_line_count then
         local anchor = math.max(mod_first - 1, 0)
         local label = "⇄ moved: L" .. orig_first .. "-" .. orig_last .. " → L" .. mod_first .. "-" .. mod_last
@@ -489,15 +545,30 @@ function M.render_diff(left_bufnr, right_bufnr, original_lines, modified_lines, 
         })
         local change = find_change_for_mod(mod_first)
         local filler_anchor
+        local filler_above = true
         if change then
-          filler_anchor = math.max(change.original.start_line - 1, 0)
+          local orig_lines_in_change = change.original.end_line - change.original.start_line
+          local mod_offset = mod_first - change.modified.start_line
+          if mod_offset < orig_lines_in_change then
+            -- This mod line has a corresponding orig line
+            filler_anchor = change.original.start_line + mod_offset - 1
+          elseif orig_lines_in_change > 0 then
+            -- Mod line is in the insertion zone — place in filler area after last orig line
+            filler_anchor = change.original.end_line - 2
+            filler_above = false
+          else
+            -- Empty original range
+            filler_anchor = math.max(change.original.start_line - 2, 0)
+            filler_above = (filler_anchor == 0)
+          end
         else
-          filler_anchor = math.max(mod_first - 1, 0)
+          local aligned = find_aligned_orig_line(mod_first, lines_diff.changes)
+          filler_anchor = math.max(aligned - 1, 0)
         end
         filler_anchor = math.min(filler_anchor, orig_line_count - 1)
         pcall(vim.api.nvim_buf_set_extmark, left_bufnr, ns_filler, filler_anchor, 0, {
           virt_lines = { { { string.rep("╱", 500), "CodeDiffFiller" } } },
-          virt_lines_above = true,
+          virt_lines_above = filler_above,
           priority = 250,
         })
       end
