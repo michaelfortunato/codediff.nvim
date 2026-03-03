@@ -278,6 +278,10 @@ Open an interactive file explorer showing changed files:
 
 " Compare two revisions (e.g. HEAD vs main)
 :CodeDiff main HEAD
+
+" Override layout for this invocation (works with all subcommands)
+:CodeDiff --inline
+:CodeDiff main --side-by-side
 ```
 
 #### PR-like Diff (Merge-base)
@@ -401,6 +405,7 @@ The history panel shows a list of commits. Each commit can be expanded to show i
 **Options:**
 - `--reverse` or `-r`: Show commits in chronological order (oldest first) instead of reverse chronological. Useful for following development story from beginning to end, or reviewing PR changes in the order they were made.
 - `--base` or `-b`: Compare each commit against a fixed revision instead of its parent. Accepts any git revision (`HEAD`, branch name, commit hash) or `WORKING` for the current working tree.
+- `--inline` / `--side-by-side`: Override the diff layout for this invocation. These flags work with all `:CodeDiff` subcommands.
 
 **Visual selection:** When called with a visual range (`:'<,'>CodeDiff history`), only commits that modified the selected lines are shown. This uses `git log -L` under the hood and is useful for tracing the evolution of a specific function or block in a large file.
 
