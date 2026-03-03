@@ -311,11 +311,15 @@ end
 -- Render diff highlights and fillers
 -- Assumes buffer content is already set by caller
 function M.render_diff(left_bufnr, right_bufnr, original_lines, modified_lines, lines_diff)
+  local use_native_filler = config.options.diff.filler_style == "native_diff"
+
   -- Clear existing highlights
   vim.api.nvim_buf_clear_namespace(left_bufnr, ns_highlight, 0, -1)
   vim.api.nvim_buf_clear_namespace(right_bufnr, ns_highlight, 0, -1)
-  vim.api.nvim_buf_clear_namespace(left_bufnr, ns_filler, 0, -1)
-  vim.api.nvim_buf_clear_namespace(right_bufnr, ns_filler, 0, -1)
+  if not use_native_filler then
+    vim.api.nvim_buf_clear_namespace(left_bufnr, ns_filler, 0, -1)
+    vim.api.nvim_buf_clear_namespace(right_bufnr, ns_filler, 0, -1)
+  end
 
   local total_left_fillers = 0
   local total_right_fillers = 0
@@ -352,13 +356,15 @@ function M.render_diff(left_bufnr, right_bufnr, original_lines, modified_lines, 
     last_orig_line = new_last_orig
     last_mod_line = new_last_mod
 
-    for _, filler in ipairs(fillers) do
-      if filler.buffer == "original" then
-        insert_filler_lines(left_bufnr, filler.after_line - 1, filler.count)
-        total_left_fillers = total_left_fillers + filler.count
-      else
-        insert_filler_lines(right_bufnr, filler.after_line - 1, filler.count)
-        total_right_fillers = total_right_fillers + filler.count
+    if not use_native_filler then
+      for _, filler in ipairs(fillers) do
+        if filler.buffer == "original" then
+          insert_filler_lines(left_bufnr, filler.after_line - 1, filler.count)
+          total_left_fillers = total_left_fillers + filler.count
+        else
+          insert_filler_lines(right_bufnr, filler.after_line - 1, filler.count)
+          total_right_fillers = total_right_fillers + filler.count
+        end
       end
     end
   end

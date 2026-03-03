@@ -82,7 +82,7 @@ function M.compute_and_render(
   end
 
   -- Render diff highlights
-  core.render_diff(original_buf, modified_buf, original_lines, modified_lines, lines_diff)
+  local render_result = core.render_diff(original_buf, modified_buf, original_lines, modified_lines, lines_diff)
 
   -- Apply semantic tokens for virtual buffers
   if original_is_virtual then
@@ -94,62 +94,85 @@ function M.compute_and_render(
 
   -- Setup scrollbind synchronization (only if windows provided)
   if original_win and modified_win and vim.api.nvim_win_is_valid(original_win) and vim.api.nvim_win_is_valid(modified_win) then
-    -- Save cursor position if we need to preserve it (on update)
-    local saved_cursor = nil
-    if not auto_scroll_to_first_hunk then
-      saved_cursor = vim.api.nvim_win_get_cursor(modified_win)
-    end
+    local use_native_filler = config.options.diff.filler_style == "native_diff"
 
-    -- Step 1: Disable scrollbind while repositioning cursors
-    vim.wo[original_win].scrollbind = false
-    vim.wo[modified_win].scrollbind = false
-    vim.wo[original_win].wrap = false
-    vim.wo[modified_win].wrap = false
+    if use_native_filler then
+      -- Native diff filler mode: self-contained module handles diffthis + scrollbind
+      local native_filler = require("codediff.ui.native_filler")
+      native_filler.setup(original_win, modified_win, lines_diff.changes, original_lines, modified_lines)
 
-    -- Step 2: Determine target cursor positions
-    local orig_cursor, mod_cursor
-    if auto_scroll_to_first_hunk and #lines_diff.changes > 0 then
-      local target_line
-      if line_range then
-        -- Find the first hunk overlapping with or nearest to the line range
-        local range_start, range_end = line_range[1], line_range[2]
-        for _, change in ipairs(lines_diff.changes) do
-          local hunk_start = change.original.start_line
-          local hunk_end = change.original.end_line
-          if hunk_end >= range_start and hunk_start <= range_end then
-            target_line = hunk_start
-            break
-          end
+      -- Position cursor at first hunk
+      if auto_scroll_to_first_hunk and #lines_diff.changes > 0 then
+        local target_line = lines_diff.changes[1].original.start_line
+        pcall(vim.api.nvim_win_set_cursor, original_win, { target_line, 0 })
+        pcall(vim.api.nvim_win_set_cursor, modified_win, { target_line, 0 })
+        if vim.api.nvim_win_is_valid(modified_win) then
+          vim.api.nvim_set_current_win(modified_win)
+          vim.cmd("normal! zz")
         end
-        if not target_line then
-          target_line = range_start
-        end
-      else
-        target_line = lines_diff.changes[1].original.start_line
+      elseif not auto_scroll_to_first_hunk then
+        local saved_cursor = vim.api.nvim_win_get_cursor(modified_win)
+        pcall(vim.api.nvim_win_set_cursor, modified_win, saved_cursor)
+        pcall(vim.api.nvim_win_set_cursor, original_win, { saved_cursor[1], 0 })
       end
-      orig_cursor = { target_line, 0 }
-      mod_cursor = { target_line, 0 }
-    elseif saved_cursor then
-      orig_cursor = { saved_cursor[1], 0 }
-      mod_cursor = saved_cursor
     else
-      orig_cursor = { 1, 0 }
-      mod_cursor = { 1, 0 }
-    end
+      -- Virtual lines filler mode: our extmarks handle fillers, manual scrollbind
+      -- Save cursor position if we need to preserve it (on update)
+      local saved_cursor = nil
+      if not auto_scroll_to_first_hunk then
+        saved_cursor = vim.api.nvim_win_get_cursor(modified_win)
+      end
 
-    -- Step 3: Establish scrollbind with anchor technique, then restore cursors
-    M.establish_scrollbind(
-      original_win, modified_win,
-      original_buf, modified_buf,
-      lines_diff,
-      orig_cursor, mod_cursor
-    )
+      -- Step 1: Disable scrollbind while repositioning cursors
+      vim.wo[original_win].scrollbind = false
+      vim.wo[modified_win].scrollbind = false
+      vim.wo[original_win].wrap = false
+      vim.wo[modified_win].wrap = false
 
-    -- Step 4: Center view on first hunk for initial open
-    if auto_scroll_to_first_hunk and #lines_diff.changes > 0 then
-      if vim.api.nvim_win_is_valid(modified_win) then
-        vim.api.nvim_set_current_win(modified_win)
-        vim.cmd("normal! zz")
+      -- Step 2: Determine target cursor positions
+      local orig_cursor, mod_cursor
+      if auto_scroll_to_first_hunk and #lines_diff.changes > 0 then
+        local target_line
+        if line_range then
+          local range_start, range_end = line_range[1], line_range[2]
+          for _, change in ipairs(lines_diff.changes) do
+            local hunk_start = change.original.start_line
+            local hunk_end = change.original.end_line
+            if hunk_end >= range_start and hunk_start <= range_end then
+              target_line = hunk_start
+              break
+            end
+          end
+          if not target_line then
+            target_line = range_start
+          end
+        else
+          target_line = lines_diff.changes[1].original.start_line
+        end
+        orig_cursor = { target_line, 0 }
+        mod_cursor = { target_line, 0 }
+      elseif saved_cursor then
+        orig_cursor = { saved_cursor[1], 0 }
+        mod_cursor = saved_cursor
+      else
+        orig_cursor = { 1, 0 }
+        mod_cursor = { 1, 0 }
+      end
+
+      -- Step 3: Establish scrollbind
+      M.establish_scrollbind(
+        original_win, modified_win,
+        original_buf, modified_buf,
+        lines_diff,
+        orig_cursor, mod_cursor
+      )
+
+      -- Step 4: Center view on first hunk for initial open
+      if auto_scroll_to_first_hunk and #lines_diff.changes > 0 then
+        if vim.api.nvim_win_is_valid(modified_win) then
+          vim.api.nvim_set_current_win(modified_win)
+          vim.cmd("normal! zz")
+        end
       end
     end
   end
