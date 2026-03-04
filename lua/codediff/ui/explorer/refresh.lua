@@ -3,6 +3,7 @@ local M = {}
 
 local config = require("codediff.config")
 local tree_module = require("codediff.ui.explorer.tree")
+local welcome = require("codediff.ui.welcome")
 -- Setup auto-refresh triggers for explorer
 -- Returns a cleanup function that should be called when the explorer is destroyed
 function M.setup_auto_refresh(explorer, tabpage)
@@ -259,11 +260,16 @@ function M.refresh(explorer)
 
       local show_welcome_page = require("codediff.ui.explorer.render").show_welcome_page
 
-      -- Show welcome page when all files are clean
+      -- Show welcome page when all files are clean (skip if already showing)
       local total_files = #(status_result.unstaged or {}) + #(status_result.staged or {}) + #(status_result.conflicts or {})
       if total_files == 0 then
+        local lifecycle = require("codediff.ui.lifecycle")
+        local session = lifecycle.get_session(explorer.tabpage)
+        local already_welcome = session and welcome.is_welcome_buffer(session.modified_bufnr)
         clear_current_file()
-        show_welcome_page(explorer)
+        if not already_welcome then
+          show_welcome_page(explorer)
+        end
       end
 
       -- Re-select the currently viewed file after refresh.
