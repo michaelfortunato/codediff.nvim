@@ -2,6 +2,7 @@
 -- Validates git status explorer functionality, window management, and file selection
 
 local git = require('codediff.core.git')
+local h = dofile('tests/helpers.lua')
 
 -- Setup CodeDiff command for tests
 local function setup_command()
@@ -35,15 +36,15 @@ describe("Explorer Mode", function()
     vim.fn.chdir(temp_dir)
     
     -- Initialize git repo
-    local init_result = vim.fn.system("git init")
-    assert(vim.v.shell_error == 0, "git init failed: " .. init_result)
-    vim.fn.system('git config user.email "test@example.com"')
-    vim.fn.system('git config user.name "Test User"')
+    h.git_cmd(temp_dir, "init")
+    h.git_cmd(temp_dir, "branch -m main")
+    h.git_cmd(temp_dir, 'config user.email "test@example.com"')
+    h.git_cmd(temp_dir, 'config user.name "Test User"')
     
     -- Create and commit initial file
     vim.fn.writefile({"line 1", "line 2"}, temp_dir .. "/file1.txt")
-    vim.fn.system("git add file1.txt")
-    local commit_result = vim.fn.system('git commit -m "Initial commit"')
+    h.git_cmd(temp_dir, "add file1.txt")
+    local commit_result = h.git_cmd(temp_dir, 'commit -m "Initial commit"')
     assert(vim.v.shell_error == 0, "git commit failed: " .. commit_result)
     
     -- Modify file (unstaged)
@@ -51,7 +52,7 @@ describe("Explorer Mode", function()
     
     -- Create new file (staged)
     vim.fn.writefile({"new file"}, temp_dir .. "/file2.txt")
-    vim.fn.system("git add file2.txt")
+    h.git_cmd(temp_dir, "add file2.txt")
     
     -- Create untracked file
     vim.fn.writefile({"untracked"}, temp_dir .. "/file3.txt")
@@ -145,18 +146,18 @@ describe("Explorer Mode", function()
   -- Test 2.5: Git status detects merge conflicts
   it("Detects merge conflicts", function()
     -- Create a branch and make conflicting changes
-    vim.fn.system("git checkout -b feature")
+    h.git_cmd(temp_dir, "checkout -b feature")
     vim.fn.writefile({"feature line 1", "line 2"}, temp_dir .. "/file1.txt")
-    vim.fn.system("git add file1.txt")
-    vim.fn.system('git commit -m "Feature change"')
+    h.git_cmd(temp_dir, "add file1.txt")
+    h.git_cmd(temp_dir, 'commit -m "Feature change"')
     
-    vim.fn.system("git checkout master")
+    h.git_cmd(temp_dir, "checkout main")
     vim.fn.writefile({"master line 1", "line 2"}, temp_dir .. "/file1.txt")
-    vim.fn.system("git add file1.txt")
-    vim.fn.system('git commit -m "Master change"')
+    h.git_cmd(temp_dir, "add file1.txt")
+    h.git_cmd(temp_dir, 'commit -m "Master change"')
     
     -- Attempt merge (will fail with conflict)
-    vim.fn.system("git merge feature")
+    h.git_cmd(temp_dir, "merge feature")
     
     local callback_called = false
     local status_result = nil
@@ -179,7 +180,7 @@ describe("Explorer Mode", function()
     assert.is_true(has_conflict, "Should detect merge conflict")
     
     -- Abort merge to clean up
-    vim.fn.system("git merge --abort")
+    h.git_cmd(temp_dir, "merge --abort")
   end)
 
   -- Test 3: Explorer creates proper window layout
@@ -385,8 +386,8 @@ describe("Explorer Mode", function()
   -- Test 8: No changes shows appropriate message
   it("Shows message when no changes exist", function()
     -- Commit all changes to have clean working tree
-    vim.fn.system("git add -A")
-    vim.fn.system("git commit -m 'Clean'")
+    h.git_cmd(temp_dir, "add -A")
+    h.git_cmd(temp_dir, 'commit -m "Clean"')
     
     local notified = false
     local original_notify = vim.notify

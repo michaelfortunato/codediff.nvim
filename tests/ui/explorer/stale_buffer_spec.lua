@@ -162,7 +162,7 @@ describe("Stale Buffer After Git Operations", function()
     assert.is_true(pre_mod_rev == nil or pre_mod_rev == "WORKING", "Before staging: modified_revision should be nil/WORKING, got: " .. tostring(pre_mod_rev))
 
     -- Stage file1.txt
-    vim.fn.system("git -C " .. vim.fn.shellescape(repo.dir) .. " add file1.txt")
+    repo.git("add file1.txt")
 
     -- Refresh and wait for async completion
     refresh_and_wait(explorer)
@@ -179,7 +179,7 @@ describe("Stale Buffer After Git Operations", function()
   -- --------------------------------------------------------------------------
   it("updates diff panes when current file is unstaged", function()
     -- First stage file1.txt so it starts in the staged group
-    vim.fn.system("git -C " .. vim.fn.shellescape(repo.dir) .. " add file1.txt")
+    repo.git("add file1.txt")
 
     local tabpage, session, explorer = open_codediff_and_wait(repo)
     local lifecycle = require("codediff.ui.lifecycle")
@@ -203,7 +203,7 @@ describe("Stale Buffer After Git Operations", function()
     assert.equals("file1.txt", explorer.current_file_path, "Precondition: should be viewing file1.txt")
 
     -- Unstage file1.txt
-    vim.fn.system("git -C " .. vim.fn.shellescape(repo.dir) .. " reset HEAD file1.txt")
+    repo.git("reset HEAD file1.txt")
 
     refresh_and_wait(explorer)
 
@@ -222,7 +222,7 @@ describe("Stale Buffer After Git Operations", function()
   -- --------------------------------------------------------------------------
   it("updates diff panes when file exists in both groups and is re-staged", function()
     -- Stage file1.txt (original change)
-    vim.fn.system("git -C " .. vim.fn.shellescape(repo.dir) .. " add file1.txt")
+    repo.git("add file1.txt")
     -- Modify file1.txt again → now appears in BOTH unstaged and staged
     repo.write_file("file1.txt", { "line1", "re-modified line2", "line3" })
 
@@ -243,7 +243,7 @@ describe("Stale Buffer After Git Operations", function()
     assert.equals("unstaged", explorer.current_file_group, "Precondition: should be viewing unstaged file1")
 
     -- Stage the new changes too (git add merges into staged)
-    vim.fn.system("git -C " .. vim.fn.shellescape(repo.dir) .. " add file1.txt")
+    repo.git("add file1.txt")
 
     refresh_and_wait(explorer)
 
@@ -264,7 +264,7 @@ describe("Stale Buffer After Git Operations", function()
     assert.equals("unstaged", explorer.current_file_group, "Precondition: file should be unstaged")
 
     -- Stage file1.txt
-    vim.fn.system("git -C " .. vim.fn.shellescape(repo.dir) .. " add file1.txt")
+    repo.git("add file1.txt")
 
     refresh_and_wait(explorer)
 
@@ -285,8 +285,8 @@ describe("Stale Buffer After Git Operations", function()
     assert.equals("file1.txt", explorer.current_file_path, "Precondition: should be viewing file1.txt")
 
     -- Commit only file1.txt
-    vim.fn.system("git -C " .. vim.fn.shellescape(repo.dir) .. " add file1.txt")
-    vim.fn.system("git -C " .. vim.fn.shellescape(repo.dir) .. " commit -m 'commit file1'")
+    repo.git("add file1.txt")
+    repo.git('commit -m "commit file1"')
 
     refresh_and_wait(explorer)
 
@@ -314,8 +314,8 @@ describe("Stale Buffer After Git Operations", function()
     local welcome = require("codediff.ui.welcome")
 
     -- Commit everything
-    vim.fn.system("git -C " .. vim.fn.shellescape(repo.dir) .. " add -A")
-    vim.fn.system("git -C " .. vim.fn.shellescape(repo.dir) .. " commit -m 'commit all'")
+    repo.git("add -A")
+    repo.git('commit -m "commit all"')
 
     refresh_and_wait(explorer)
 
@@ -338,7 +338,7 @@ describe("Stale Buffer After Git Operations", function()
     local welcome = require("codediff.ui.welcome")
 
     -- Stash everything
-    vim.fn.system("git -C " .. vim.fn.shellescape(repo.dir) .. " stash")
+    repo.git("stash")
 
     refresh_and_wait(explorer)
 
