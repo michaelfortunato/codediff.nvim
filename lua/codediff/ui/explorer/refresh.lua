@@ -92,9 +92,13 @@ function M.setup_auto_refresh(explorer, tabpage)
                 if watch_err then
                   return
                 end
-                -- Only refresh if this tabpage is current
-                if vim.api.nvim_get_current_tabpage() == tabpage and vim.api.nvim_tabpage_is_valid(tabpage) and not explorer.is_hidden then
+                if not vim.api.nvim_tabpage_is_valid(tabpage) or explorer.is_hidden then
+                  return
+                end
+                if vim.api.nvim_get_current_tabpage() == tabpage then
                   debounced_refresh()
+                else
+                  explorer._pending_refresh = true
                 end
               end)
             )
@@ -116,6 +120,17 @@ function M.setup_auto_refresh(explorer, tabpage)
     group = group,
     pattern = tostring(tabpage),
     callback = cleanup,
+  })
+
+  -- Flush pending refresh when returning to the codediff tab
+  vim.api.nvim_create_autocmd("TabEnter", {
+    group = group,
+    callback = function()
+      if explorer._pending_refresh and vim.api.nvim_get_current_tabpage() == tabpage then
+        explorer._pending_refresh = nil
+        debounced_refresh()
+      end
+    end,
   })
 
   return cleanup

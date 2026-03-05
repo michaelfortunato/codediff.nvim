@@ -323,7 +323,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
     -- Same file can have different diffs (staged vs HEAD, working vs staged)
     local session = lifecycle.get_session(tabpage)
     if session then
-      local is_same_file = (session.modified_path == abs_path or (session.git_root and session.original_path == file_path))
+      local is_same_file = (session.modified_path == abs_path or session.modified_path == file_path or (session.git_root and session.original_path == file_path))
 
       if is_same_file and not opts.force then
         -- Check if it's the same diff comparison
