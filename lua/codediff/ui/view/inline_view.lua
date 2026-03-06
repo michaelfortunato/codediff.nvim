@@ -336,10 +336,11 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
     return false
   end
 
-  -- Disable auto-refresh and clear old highlights
+  -- Disable auto-refresh and clear old highlights from ALL namespaces.
+  -- ns_highlight/ns_filler may linger after toggling from side-by-side.
   if old_modified_buf and vim.api.nvim_buf_is_valid(old_modified_buf) then
     auto_refresh.disable(old_modified_buf)
-    inline.clear(old_modified_buf)
+    lifecycle.clear_highlights(old_modified_buf)
   end
 
   lifecycle.update_diff_result(tabpage, nil)
