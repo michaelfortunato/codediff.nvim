@@ -393,11 +393,10 @@ describe("Hunk operations (side-by-side)", function()
     local discard_fn = get_keymap_fn(mod_buf, "Discard hunk")
     assert.is_truthy(discard_fn, "discard_hunk keymap callback should be set")
 
-    -- Mock vim.ui.select to auto-confirm "Yes"
-    local original_ui_select = vim.ui.select
-    vim.ui.select = function(items, opts, on_choice)
-      -- Auto-confirm with "Yes"
-      on_choice("Yes")
+    -- Mock vim.fn.confirm to auto-confirm "Discard" (choice 1)
+    local original_confirm = vim.fn.confirm
+    vim.fn.confirm = function(_, _, _, _)
+      return 1
     end
 
     -- Position cursor on hunk 1 (line 1)
@@ -406,8 +405,8 @@ describe("Hunk operations (side-by-side)", function()
     -- Invoke discard_hunk
     discard_fn()
 
-    -- Restore original vim.ui.select
-    vim.ui.select = original_ui_select
+    -- Restore original vim.fn.confirm
+    vim.fn.confirm = original_confirm
 
     -- Wait for the async git operation to complete
     vim.wait(2000, function() return false end, 100)
